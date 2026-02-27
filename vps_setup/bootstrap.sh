@@ -514,6 +514,30 @@ ssh -o ControlPath="$CTRL_SOCKET" -O exit \
 info "パスワード認証セッションを終了しました"
 echo ""
 
+#── SSH 鍵認証テスト（Ansible 実行前の確認）─────────────
+info "SSH 接続を安定させるため 3 秒待機中..."
+sleep 3
+
+info "SSH 鍵認証テストを実施中..."
+if ! ssh \
+     -i "$LOCAL_PRIVKEY" \
+     -o BatchMode=yes \
+     -o ConnectTimeout=15 \
+     -o StrictHostKeyChecking=accept-new \
+     -o IdentitiesOnly=yes \
+     -o PasswordAuthentication=no \
+     -o PubkeyAuthentication=yes \
+     -o ControlMaster=no \
+     -p "$VPS_SSH_PORT_BEFORE" \
+     "${VPS_ROOT_USER}@${VPS_HOST}" "true"; then
+  error "SSH 鍵認証テストに失敗しました。"
+  error "authorized_keys への登録が正常に行われていない可能性があります。"
+  error "手動で確認: ssh -i ${LOCAL_PRIVKEY} -p ${VPS_SSH_PORT_BEFORE} root@${VPS_HOST}"
+  exit 1
+fi
+info "SSH 鍵認証 OK ✓"
+echo ""
+
 #── inventory.ini 生成 ────────────────────────────────
 INVENTORY_FILE="${WORK_DIR}/inventory.ini"
 cat > "$INVENTORY_FILE" <<EOF
