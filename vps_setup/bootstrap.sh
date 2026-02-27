@@ -18,6 +18,9 @@
 #========================================================
 set -euo pipefail
 
+# bash <(curl ...) 実行時は PATH が通らないため Homebrew パスを明示追加
+export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:$PATH"
+
 VERSION="1.1.0"
 
 #========================================================
