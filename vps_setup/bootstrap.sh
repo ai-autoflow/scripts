@@ -216,6 +216,13 @@ check_os() {
 
 #========================================================
 # Ansible 確認・インストール
+# 優先順位: 既存インストール済み → Python venv → Homebrew
+#
+# Python venv を使う理由:
+# - macOS には必ず Python3 が入っている（Homebrew 不要）
+# - 一時フォルダ内にインストール → システムを汚さない
+# - PATH 変更不要（絶対パスで呼び出す）
+# - 全Mac共通で動作する
 #========================================================
 check_ansible() {
   if command -v ansible-playbook &>/dev/null; then
@@ -223,16 +230,38 @@ check_ansible() {
     return 0
   fi
 
-  warn "Ansible が見つかりません。Homebrew でインストールします..."
+  warn "Ansible が見つかりません。インストールします..."
 
-  if ! command -v brew &>/dev/null; then
-    error "Homebrew が見つかりません。先にインストールしてください:"
-    error "  /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
-    exit 1
+  # Python venv でインストール（Homebrew 不要・全 Mac で動作）
+  if command -v python3 &>/dev/null; then
+    info "Python 仮想環境に Ansible をインストール中（初回のみ数分かかります）..."
+    local venv_dir="${WORK_DIR}/venv"
+
+    python3 -m venv "$venv_dir"
+    "${venv_dir}/bin/pip" install --quiet --upgrade pip
+    "${venv_dir}/bin/pip" install --quiet ansible
+
+    # venv の bin を PATH の先頭に追加
+    export PATH="${venv_dir}/bin:$PATH"
+
+    if command -v ansible-playbook &>/dev/null; then
+      info "Ansible のインストールが完了しました"
+      return 0
+    fi
   fi
 
-  brew install ansible
-  info "Ansible のインストールが完了しました。"
+  # Python3 がない場合は Homebrew を試みる
+  if command -v brew &>/dev/null; then
+    info "Homebrew で Ansible をインストール中..."
+    brew install ansible
+    info "Ansible のインストールが完了しました"
+    return 0
+  fi
+
+  error "Ansible をインストールできませんでした。"
+  error "Xcode Command Line Tools をインストールしてから再実行してください:"
+  error "  xcode-select --install"
+  exit 1
 }
 
 #========================================================
