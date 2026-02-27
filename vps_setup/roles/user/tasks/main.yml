@@ -1,0 +1,35 @@
+---
+#========================================================
+# roles/user - ユーザー作成・公開鍵登録
+# setup2.sh STEP3〜4 相当
+#========================================================
+
+- name: 新規ユーザーを作成
+  ansible.builtin.user:
+    name: "{{ new_user }}"
+    groups: sudo
+    append: yes
+    create_home: yes
+    shell: /bin/bash
+    state: present
+
+- name: ユーザーのパスワードを設定
+  ansible.builtin.user:
+    name: "{{ new_user }}"
+    password: "{{ new_user_password_b64 | b64decode | password_hash('sha512') }}"
+    update_password: always
+
+- name: .ssh ディレクトリを作成
+  ansible.builtin.file:
+    path: "/home/{{ new_user }}/.ssh"
+    state: directory
+    owner: "{{ new_user }}"
+    group: "{{ new_user }}"
+    mode: '0700'
+
+- name: 公開鍵を authorized_keys に登録
+  ansible.posix.authorized_key:
+    user: "{{ new_user }}"
+    key: "{{ lookup('file', local_pub_key_path) }}"
+    state: present
+    exclusive: no

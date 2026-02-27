@@ -1,0 +1,15 @@
+---
+#========================================================
+# roles/workdir - 作業ディレクトリ作成
+# setup2.sh STEP9 相当
+# work_dir_name が空でない場合のみ実行
+#========================================================
+
+- name: 作業ディレクトリを作成
+  ansible.builtin.file:
+    path: "/home/{{ new_user }}/{{ work_dir_name }}"
+    state: directory
+    owner: "{{ new_user }}"
+    group: "{{ new_user }}"
+    mode: '0755'
+  when: work_dir_name | length > 0

@@ -1,0 +1,29 @@
+---
+#========================================================
+# site.yml - メイン playbook
+# Ubuntu 24.04 LTS VPS 初期セットアップ
+#========================================================
+- name: Ubuntu 24.04 VPS 初期セットアップ
+  hosts: vps
+  become: yes
+
+  roles:
+    - common     # パッケージ更新・基本パッケージ
+    - user       # ユーザー作成・公開鍵登録
+    - security   # SSH設定・UFW・自動更新
+    - docker     # Docker CE（install_docker: yes の場合のみ）
+    - workdir    # 作業ディレクトリ（work_dir_name が空でない場合のみ）
+
+  post_tasks:
+    - name: root の authorized_keys から一時公開鍵を削除
+      ansible.posix.authorized_key:
+        user: root
+        key: "{{ lookup('file', local_pub_key_path) }}"
+        state: absent
+      # ※ このタスク実行後は root の鍵認証が無効になる（最終タスク）
+
+    - name: 再起動（非同期実行・切断を無視）
+      ansible.builtin.shell: "sleep 2 && reboot"
+      async: 1
+      poll: 0
+      ignore_errors: yes

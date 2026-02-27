@@ -1,0 +1,101 @@
+---
+#========================================================
+# roles/security - SSH設定・UFW・自動更新
+# setup2.sh STEP5〜6 相当
+#========================================================
+
+# ── UFW ─────────────────────────────────────────────
+
+- name: UFW をインストール
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+
+- name: UFW デフォルトポリシー（受信拒否）
+  community.general.ufw:
+    direction: incoming
+    policy: deny
+
+- name: UFW デフォルトポリシー（送信許可）
+  community.general.ufw:
+    direction: outgoing
+    policy: allow
+
+- name: UFW 新 SSH ポートを許可（レートリミット付き）
+  community.general.ufw:
+    rule: limit
+    port: "{{ ssh_port | string }}"
+    proto: tcp
+    comment: "SSH custom port (rate limited)"
+
+- name: UFW 22番ポートを一時許可（セットアップ中のみ）
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    comment: "SSH default (temporary)"
+
+- name: UFW を有効化
+  community.general.ufw:
+    state: enabled
+
+# ── SSH 設定 ─────────────────────────────────────────
+
+- name: sshd_config.d ディレクトリを作成
+  ansible.builtin.file:
+    path: /etc/ssh/sshd_config.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: sshd_config 内の Port 行をコメントアウト（競合防止）
+  ansible.builtin.replace:
+    path: /etc/ssh/sshd_config
+    regexp: '^([[:space:]]*Port[[:space:]]+)'
+    replace: '#\1'
+    backup: yes
+
+- name: 他の drop-in ファイルの Port 行をコメントアウト
+  ansible.builtin.shell: |
+    for f in /etc/ssh/sshd_config.d/*.conf; do
+      [ "$f" = "/etc/ssh/sshd_config.d/99-hardening.conf" ] && continue
+      [ -e "$f" ] || continue
+      grep -Eq '^[[:space:]]*Port[[:space:]]+' "$f" && \
+        sed -i.bak -E 's/^([[:space:]]*Port[[:space:]]+)/#\1/' "$f" || true
+    done
+  changed_when: false
+
+- name: SSH hardening 設定ファイルを配置
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/99-hardening.conf
+    content: |
+      # Managed by vps_setup ansible v1.0.0
+      Port {{ ssh_port }}
+      PermitRootLogin no
+      PasswordAuthentication no
+      PubkeyAuthentication yes
+    owner: root
+    group: root
+    mode: '0644'
+    backup: yes
+  notify: restart sshd
+
+- name: sshd 構文チェック
+  ansible.builtin.command: sshd -t
+  changed_when: false
+
+- name: SSH サービスを再起動
+  ansible.builtin.service:
+    name: "{{ 'ssh' if ansible_service_mgr == 'systemd' else 'sshd' }}"
+    state: restarted
+    enabled: yes
+
+# ── 22番ポートを閉じる（最終処理）────────────────────
+
+- name: UFW 22番ポートを閉じる
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    delete: yes

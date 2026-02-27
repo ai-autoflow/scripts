@@ -1,0 +1,39 @@
+---
+#========================================================
+# roles/common - パッケージ更新・基本パッケージ導入
+# setup2.sh STEP1〜2 相当
+#========================================================
+
+- name: apt キャッシュを更新
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 0
+
+- name: 全パッケージをアップグレード
+  ansible.builtin.apt:
+    upgrade: dist
+    autoremove: yes
+    autoclean: yes
+
+- name: 前提パッケージをインストール
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - software-properties-common
+      - git
+      - unattended-upgrades
+    state: present
+
+- name: セキュリティ自動更新の設定ファイルを配置
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+    owner: root
+    group: root
+    mode: '0644'
