@@ -23,7 +23,7 @@ VERSION="1.1.0"
 #========================================================
 # ★ 販売者設定（ここだけ変更する）
 #========================================================
-GITHUB_RAW_URL="https://raw.githubusercontent.com/YOUR_USER/YOUR_REPO/main"
+GITHUB_RAW_URL="https://raw.githubusercontent.com/ai-autoflow/scripts/main/vps_setup"
 
 #── デフォルト値 ──────────────────────────────────────
 DEFAULT_SSH_PORT="55555"
