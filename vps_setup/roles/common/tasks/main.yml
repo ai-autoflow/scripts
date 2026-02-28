@@ -9,19 +9,19 @@
 # このプロセスが dpkg ロックを取得したまま動いていると
 # apt-get が "Could not get lock" で失敗する。
 # setup2.sh の wait_for_apt_lock() と同等の処理。
+#
+# ★ raw モジュールを使う理由:
+#   ansible.builtin.systemd（loop）や shell を使うと
+#   タスクごとに SFTP/SCP で Python モジュールを転送する必要がある。
+#   unattended-upgrades の停止直後は dpkg ロック解放の競合で
+#   システムが一瞬不安定になり SFTP/SCP が両方失敗して UNREACHABLE になる。
+#   raw モジュールは Python 転送不要・SSH で直接実行するため競合を回避できる。
 
-- name: apt 自動更新サービスを一時停止（ロック競合防止）
-  ansible.builtin.systemd:
-    name: "{{ item }}"
-    state: stopped
-  loop:
-    - unattended-upgrades
-    - apt-daily
-    - apt-daily-upgrade
-  failed_when: false  # サービスが存在しない場合もあるため
-
-- name: apt ロック解放待機（最大 180 秒）
-  ansible.builtin.shell: |
+- name: apt 自動更新サービスを停止してロック解放を待機
+  ansible.builtin.raw: |
+    # 3サービスを1コマンドで一括停止（順番にループしない）
+    systemctl stop unattended-upgrades apt-daily apt-daily-upgrade 2>/dev/null || true
+    # dpkg ロック解放待機（最大 180 秒）
     i=0
     while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
           fuser /var/lib/dpkg/lock          >/dev/null 2>&1 || \

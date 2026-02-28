@@ -50,266 +50,244 @@ bash <(curl -sSL https://raw.githubusercontent.com/ai-autoflow/scripts/main/vps_
 
 ---
 
-## 実行フロー（全工程詳細）
+## 全工程ツリー
 
 ```
-【手元 Mac でターミナルを開き、1行コマンドを実行】
-  ★ユーザーが入力: bash <(curl -sSL .../bootstrap.sh)
-  │
-  │  bootstrap.sh が curl でダウンロードされ、bash で直接実行される
-  │
-  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ [PHASE 1] ファイルダウンロード                                    │
-│   GitHub の raw URL から以下の 8 ファイルを /tmp/ に保存         │
-│     ・ansible.cfg          （Ansible 設定）                      │
-│     ・requirements.yml     （Galaxy コレクション定義）            │
-│     ・site.yml             （メイン Playbook）                    │
-│     ・roles/common/tasks/main.yml                               │
-│     ・roles/user/tasks/main.yml                                 │
-│     ・roles/security/tasks/main.yml                             │
-│     ・roles/docker/tasks/main.yml                               │
-│     ・roles/workdir/tasks/main.yml                              │
-└─────────────────────────────────────────────────────────────────┘
-  │
-  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ [PHASE 2] Ansible 確認・インストール                               │
-│   ① ansible コマンドが既にあるか確認                             │
-│   ② なければ: python3 -m venv /tmp/vps_ansible_venv を作成      │
-│   ③ pip install ansible（仮想環境内）                            │
-│      ※ Homebrew 不要・全 Mac 対応                               │
-│   ④ ansible-galaxy collection install                           │
-│        community.general   （UFW モジュール等）                  │
-│        ansible.posix        （authorized_key モジュール等）       │
-└─────────────────────────────────────────────────────────────────┘
-  │
-  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ [PHASE 3] ウィザード（設定入力）                                   │
-│                                                                 │
-│   ★ユーザーが入力: VPS の IP アドレス                            │
-│       例) 210.131.215.183                                       │
-│                                                                 │
-│   ★ユーザーが入力: 新しいユーザー名                               │
-│       例) myuser                                                │
-│                                                                 │
-│   ★ユーザーが入力: パスワード（入力時は非表示）                    │
-│   ★ユーザーが入力: パスワード（確認のため再入力）                  │
-│                                                                 │
-│   ★ユーザーが入力（または Enter でデフォルト）:                   │
-│       ・SSH ポート番号   [デフォルト: 55555]                      │
-│       ・SSH Config Host 名 [デフォルト: myvps]                   │
-│       ・SSH 鍵ファイル名  [デフォルト: ssh_key_vps]               │
-│       ・Docker インストール [デフォルト: yes]                     │
-│       ・作業ディレクトリ名 [デフォルト: repo]                     │
-└─────────────────────────────────────────────────────────────────┘
-  │
-  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ [PHASE 4] 設定確認画面                                            │
-│   入力内容が一覧表示される                                        │
-│                                                                 │
-│   ★ユーザーが入力: y （続行）/ n （中止）                         │
-└─────────────────────────────────────────────────────────────────┘
-  │
-  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ [PHASE 5] SSH 鍵ペア生成（手元 Mac 上で実行）                      │
-│   ssh-keygen -t ed25519 -f ~/.ssh/ssh_key_vps -N ""             │
-│     → ~/.ssh/ssh_key_vps     （秘密鍵）が生成される              │
-│     → ~/.ssh/ssh_key_vps.pub （公開鍵）が生成される              │
-│   ※ 同名の鍵が既にある場合はスキップ                             │
-└─────────────────────────────────────────────────────────────────┘
-  │
-  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ [PHASE 6] VPS に接続（パスワード認証・★この1回だけ★）             │
-│                                                                 │
-│   ① SSH ControlMaster 接続を確立                                │
-│      ssh -o ControlMaster=yes root@<IP> -p 22                   │
-│                                                                 │
-│      ★ユーザーが入力: VPS の root パスワード                     │
-│         ※ これがパスワードを入力する唯一の機会                    │
-│         ※ 以降はすべて SSH 鍵認証で自動実行                      │
-│                                                                 │
-│   ② ControlMaster 経由で公開鍵を VPS に送信・登録               │
-│      ssh-copy-id を内部で呼び出し、                              │
-│      VPS の /root/.ssh/authorized_keys に公開鍵を追記            │
-│      ※ ControlMaster が生きているため追加パスワード入力は不要     │
-│                                                                 │
-│   ③ ControlMaster 接続を閉じる                                  │
-└─────────────────────────────────────────────────────────────────┘
-  │
-  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ [PHASE 7] SSH 鍵認証テスト                                        │
-│   3 秒待機後、鍵認証で接続確認                                    │
-│   ssh -i ~/.ssh/ssh_key_vps -o BatchMode=yes root@<IP> "true"   │
-│   ✓ 接続成功 → 次フェーズへ                                      │
-│   ✗ 接続失敗 → エラーを表示してスクリプトを停止                   │
-└─────────────────────────────────────────────────────────────────┘
-  │
-  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ [PHASE 8] Ansible 実行ファイル生成（手元 Mac 上で生成）            │
-│   /tmp/vps_ansible/inventory.ini を生成                          │
-│     [vps]                                                       │
-│     <IP> ansible_user=root ansible_port=22 ...                  │
-│                                                                 │
-│   /tmp/vps_ansible/vars.yml を生成                               │
-│     new_user: <ユーザー名>                                       │
-│     new_user_password_b64: <パスワードの Base64>                 │
-│     ssh_port: <新SSHポート>                                      │
-│     install_docker: yes/no                                      │
-│     work_dir_name: <作業Dir名>                                   │
-│     local_pub_key_path: ~/.ssh/ssh_key_vps.pub                  │
-└─────────────────────────────────────────────────────────────────┘
-  │
-  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ [PHASE 9] Ansible Playbook 実行（約 5〜10 分・全自動）            │
-│  ansible-playbook -i inventory.ini site.yml -e @vars.yml        │
-│                                                                 │
-│  ┌── role: common （パッケージ更新・基本設定）───────────────────┐ │
-│  │  ★ここから先はすべて VPS 上で自動実行される                   │ │
-│  │                                                              │ │
-│  │  [apt ロック対策]                                            │ │
-│  │  ① unattended-upgrades サービスを一時停止                   │ │
-│  │  ② apt-daily サービスを一時停止                             │ │
-│  │  ③ apt-daily-upgrade サービスを一時停止                     │ │
-│  │  ④ dpkg/apt ロックファイルの解放を待機（最大 180 秒）        │ │
-│  │     ※ Ubuntu 24.04 起動直後の自動更新との競合を防ぐ          │ │
-│  │                                                              │ │
-│  │  [STEP 1: パッケージ更新]                                    │ │
-│  │  ⑤ apt update（パッケージリスト更新）                       │ │
-│  │  ⑥ apt upgrade（全パッケージを最新化）                      │ │
-│  │     + autoremove（不要パッケージ削除）                       │ │
-│  │     + autoclean（キャッシュ削除）                            │ │
-│  │                                                              │ │
-│  │  [STEP 2・8・11: 前提パッケージ導入・自動更新設定]            │ │
-│  │  ⑦ apt install:                                             │ │
-│  │     ・ca-certificates        （SSL証明書）                   │ │
-│  │     ・curl                   （HTTPクライアント）             │ │
-│  │     ・gnupg                  （GPG暗号化）                   │ │
-│  │     ・lsb-release            （ディストリビューション情報）   │ │
-│  │     ・software-properties-common（リポジトリ管理）           │ │
-│  │     ・git                    （バージョン管理）               │ │
-│  │     ・unattended-upgrades    （セキュリティ自動更新）         │ │
-│  │                                                              │ │
-│  │  ⑧ /etc/apt/apt.conf.d/20auto-upgrades を VPS に配置        │ │
-│  │     APT::Periodic::Update-Package-Lists "1";  ← 毎日更新    │ │
-│  │     APT::Periodic::Unattended-Upgrade "1";    ← 毎日適用    │ │
-│  │     APT::Periodic::AutocleanInterval "7";     ← 7日クリア   │ │
-│  └──────────────────────────────────────────────────────────────┘ │
-│                                                                 │
-│  ┌── role: user （ユーザー作成・公開鍵登録）─────────────────────┐ │
-│  │  [STEP 3: ユーザー作成]                                      │ │
-│  │  ① 一般ユーザーを作成（bash シェル・sudo グループ追加）       │ │
-│  │  ② パスワードを設定（SHA-512 ハッシュ化して登録）             │ │
-│  │                                                              │ │
-│  │  [STEP 4: 公開鍵登録]                                       │ │
-│  │  ③ /home/<ユーザー>/.ssh/ ディレクトリを作成（パーミッション 0700）│ │
-│  │  ④ ~/.ssh/ssh_key_vps.pub を VPS に送信                     │ │
-│  │     → /home/<ユーザー>/.ssh/authorized_keys に登録          │ │
-│  └──────────────────────────────────────────────────────────────┘ │
-│                                                                 │
-│  ┌── role: security （UFW・SSH 設定）────────────────────────────┐ │
-│  │  [STEP 5: UFW ファイアウォール設定]                          │ │
-│  │  ① UFW インストール                                         │ │
-│  │  ② デフォルトポリシー設定:                                  │ │
-│  │     ・受信: deny（全て拒否）                                 │ │
-│  │     ・送信: allow（全て許可）                                │ │
-│  │  ③ 新 SSH ポートを許可（レートリミット付き・ブルートフォース対策）│ │
-│  │  ④ 22番ポートを一時許可（★セットアップ中のみ・後で閉じる）   │ │
-│  │  ⑤ UFW を有効化                                             │ │
-│  │                                                              │ │
-│  │  [STEP 6: SSH hardening 設定]                               │ │
-│  │  ⑥ /etc/ssh/sshd_config.d/ ディレクトリを作成               │ │
-│  │  ⑦ /etc/ssh/sshd_config の既存 Port 行をコメントアウト       │ │
-│  │     （競合防止のため）                                       │ │
-│  │  ⑧ 他の drop-in ファイルの Port 行もコメントアウト           │ │
-│  │  ⑨ /etc/ssh/sshd_config.d/99-hardening.conf を VPS に配置  │ │
-│  │     Port               <新ポート番号>                        │ │
-│  │     PermitRootLogin    no   ← root ログイン禁止              │ │
-│  │     PasswordAuthentication no ← パスワード認証禁止           │ │
-│  │     PubkeyAuthentication  yes ← 鍵認証のみ許可              │ │
-│  │  ⑩ sshd 構文チェック（sshd -t）→ エラーがあれば停止         │ │
-│  │  ⑪ SSH サービスを再起動（新ポートで待受開始）                │ │
-│  │     ※ 22番ポートはここでは閉じない                          │ │
-│  │       （後続タスクの接続が切れるため post_tasks で閉じる）    │ │
-│  └──────────────────────────────────────────────────────────────┘ │
-│                                                                 │
-│  ┌── role: docker （install_docker=yes の場合のみ）──────────────┐ │
-│  │  [STEP 7: Docker CE インストール]                            │ │
-│  │  ① /etc/apt/keyrings/ ディレクトリを作成                    │ │
-│  │  ② アーキテクチャ検出（x86_64→amd64 / aarch64→arm64）       │ │
-│  │  ③ Docker 公式 GPG キーを取得                               │ │
-│  │     download.docker.com/linux/ubuntu/gpg                    │ │
-│  │     → /etc/apt/keyrings/docker.asc に保存                   │ │
-│  │  ④ Docker APT リポジトリを追加                              │ │
-│  │     /etc/apt/sources.list.d/docker.list                     │ │
-│  │  ⑤ apt update（Docker リポジトリ追加後）                    │ │
-│  │  ⑥ apt install:                                             │ │
-│  │     ・docker-ce              （Docker エンジン本体）         │ │
-│  │     ・docker-ce-cli          （CLI ツール）                  │ │
-│  │     ・containerd.io          （コンテナランタイム）           │ │
-│  │     ・docker-buildx-plugin   （BuildKit 拡張）               │ │
-│  │     ・docker-compose-plugin  （Compose V2）                  │ │
-│  │  ⑦ Docker サービスを起動・自動起動設定（systemd enable）     │ │
-│  │  ⑧ 一般ユーザーを docker グループに追加                     │ │
-│  │     （sudo なしで docker コマンドを使えるようにする）          │ │
-│  └──────────────────────────────────────────────────────────────┘ │
-│                                                                 │
-│  ┌── role: workdir （work_dir_name が空でない場合のみ）───────────┐ │
-│  │  [STEP 9: 作業ディレクトリ作成]                              │ │
-│  │  ① /home/<ユーザー>/<作業Dir名>/ を作成                     │ │
-│  │     オーナー: <ユーザー>:<ユーザー>                          │ │
-│  │     パーミッション: 0755                                     │ │
-│  └──────────────────────────────────────────────────────────────┘ │
-│                                                                 │
-│  ┌── post_tasks （全 role 完了後の後処理）────────────────────────┐ │
-│  │  [STEP 12: 最終パッケージ更新]                               │ │
-│  │  ① apt update + apt upgrade（全 role 完了後の最終更新）      │ │
-│  │     + autoremove + autoclean                                │ │
-│  │  ② SSH サービスを再起動（最終更新後・カスタムポートを確実反映）│ │
-│  │                                                              │ │
-│  │  [STEP 13: 22番ポートを閉鎖]                                 │ │
-│  │  ③ UFW: 22番ポートのルールを削除                            │ │
-│  │     ※ 全タスク完了後のここで初めて閉じる（安全なタイミング）  │ │
-│  │                                                              │ │
-│  │  [STEP 10: 一時公開鍵を削除]                                 │ │
-│  │  ④ root の /root/.ssh/authorized_keys から                  │ │
-│  │     セットアップ用に登録した公開鍵を削除                      │ │
-│  │     ※ 以降 root への SSH 鍵ログインは不可になる              │ │
-│  │                                                              │ │
-│  │  [再起動]                                                    │ │
-│  │  ⑤ VPS を再起動（非同期実行・Ansible からの切断を無視）      │ │
-│  └──────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-  │
-  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ [PHASE 10] SSH config 更新（手元 Mac の ~/.ssh/config に追記）    │
-│   Host myvps                                                    │
-│     HostName     <IP アドレス>                                   │
-│     User         <ユーザー名>                                    │
-│     Port         <新 SSH ポート>                                 │
-│     IdentityFile ~/.ssh/ssh_key_vps                             │
-│   ※ 既に同名の Host がある場合は上書き                           │
-└─────────────────────────────────────────────────────────────────┘
-  │
-  ▼
-┌─────────────────────────────────────────────────────────────────┐
-│ [PHASE 11] 接続テスト（VPS 再起動後）                             │
-│   最大 2 分間（5 秒ごと）リトライしながら接続確認                  │
-│   ssh -i ~/.ssh/ssh_key_vps -p <新ポート> <ユーザー>@<IP>        │
-│                                                                 │
-│   ✓ 接続成功 →「セットアップ完了！」メッセージを表示             │
-│   ✗ タイムアウト → エラーを表示（手動で ssh myvps を試してください）│
-└─────────────────────────────────────────────────────────────────┘
-  │
-  ▼
+凡例:
+  [DL]         GitHub から curl でダウンロード（Mac の /tmp/ に保存）
+  [生成]        スクリプトが Mac 上でローカル生成
+  [→VPS]       Mac から VPS へファイルを転送
+  [実行@Mac]    Mac 上で実行
+  [実行@VPS]    VPS 上で実行（ユーザー: root）
+  [実行@VPS:u]  VPS 上で実行（ユーザー: 新ユーザー）
+  [削除@Mac]    Mac 上のファイルを削除
+  [削除@VPS]    VPS 上のファイルを削除
+  ★            ユーザーが手動で入力
+```
+
+```
+★ ターミナルで実行: bash <(curl -sSL .../bootstrap.sh)
+│
+│   bootstrap.sh 本体が curl でダウンロードされ bash で直接実行される
+│
+├─[PHASE 1]── ファイルダウンロード ──────────────────────── [実行@Mac]
+│
+│   [DL] GitHub → /tmp/vps_setup_XXXX/ に保存（curl、9ファイル）
+│     ├─ ansible.cfg                    # Ansible 設定
+│     ├─ requirements.yml               # Galaxy コレクション定義
+│     ├─ site.yml                       # メイン Playbook
+│     ├─ roles/common/tasks/main.yml    # パッケージ更新・基本設定
+│     ├─ roles/user/tasks/main.yml      # ユーザー作成・公開鍵登録
+│     ├─ roles/security/tasks/main.yml  # UFW・SSH hardening
+│     ├─ roles/docker/tasks/main.yml    # Docker CE インストール
+│     ├─ roles/workdir/tasks/main.yml   # 作業ディレクトリ作成
+│     └─ setup_confirmation.sh          # VPS 設定確認スクリプト
+│
+├─[PHASE 2]── Ansible 確認・インストール ──────────────────── [実行@Mac]
+│
+│   ① 既存の ansible コマンドを確認 → あればスキップ
+│   ② なければ:
+│      [生成] /tmp/vps_setup_XXXX/venv/  （python3 -m venv）
+│             pip install ansible（仮想環境内・Homebrew 不要）
+│   ③ ansible-galaxy collection install
+│        community.general  （UFW モジュール等）
+│        ansible.posix       （authorized_key モジュール等）
+│
+├─[PHASE 3]── ウィザード（設定入力） ─────────────────────── [実行@Mac]
+│
+│   ★ 入力: VPS の IP アドレス
+│   ★ 入力: 新しいユーザー名
+│   ★ 入力: パスワード（非表示） + 確認のため再入力
+│   ★ 入力: SSH ポート番号    [Enter → 55555]
+│   ★ 入力: SSH Config Host 名  [Enter → myvps]
+│   ★ 入力: SSH 鍵ファイル名   [Enter → ssh_key_vps]
+│   ★ 入力: Docker インストール [Enter → yes]
+│   ★ 入力: 作業ディレクトリ名  [Enter → repo]
+│
+├─[PHASE 4]── 設定確認画面 ───────────────────────────────── [実行@Mac]
+│
+│   入力内容が一覧表示される（パスワードは *** でマスク）
+│   ★ 入力: y（続行） / n（中止）
+│
+├─[PHASE 5]── SSH 鍵ペア生成 ─────────────────────────────── [実行@Mac]
+│
+│   [生成] ~/.ssh/ssh_key_vps      （秘密鍵・セットアップ後も保持）
+│   [生成] ~/.ssh/ssh_key_vps.pub  （公開鍵・セットアップ後も保持）
+│   ※ 同名の鍵が既にある場合は .bak.XXXX にリネームしてから新規生成
+│
+├─[PHASE 6]── VPS に接続（★パスワード認証・この1回だけ） ─── [実行@Mac]
+│
+│   known_hosts クリア（VPS 再構築時の古いホストキー対策）
+│     [削除@Mac] ~/.ssh/known_hosts の <IP> エントリ（あれば）
+│     [削除@Mac] ~/.ssh/known_hosts の [<IP>]:<新ポート> エントリ（あれば）
+│
+│   SSH ControlMaster 接続確立（port 22・パスワード認証）
+│     ★ 入力: VPS の root パスワード ← これが唯一のパスワード入力
+│
+│   公開鍵を VPS に書き込み（ControlMaster 経由・追加パスワード不要）
+│     [→VPS] ~/.ssh/ssh_key_vps.pub の内容
+│            SSH コマンド経由で echo
+│            → /root/.ssh/authorized_keys に追記
+│
+│   ControlMaster 接続を切断
+│
+├─[PHASE 7]── SSH 鍵認証テスト ───────────────────────────── [実行@Mac]
+│
+│   3 秒待機後、鍵認証で接続確認
+│     ✓ 成功 → 次フェーズへ
+│     ✗ 失敗 → エラーを表示してスクリプトを停止
+│
+├─[PHASE 8]── Ansible 実行ファイル生成 ───────────────────── [実行@Mac]
+│
+│   [生成] /tmp/vps_setup_XXXX/inventory.ini
+│          → Ansible の接続先定義（VPS IP・port 22・秘密鍵パス）
+│
+│   [生成] /tmp/vps_ansible_vars_XXXX.yml
+│          → Ansible 変数ファイル（パスワードは base64 エンコード済み）
+│
+├─[PHASE 9]── Ansible Playbook 実行（約 5〜10 分） ─────────── [実行@Mac]
+│
+│   ansible-playbook site.yml -i inventory.ini -e @vars.yml
+│
+│   ┌─ Ansible の通信方式（pipelining = False）──────────────────────┐
+│   │  Python コードを SSH の stdin に流し込まない                    │
+│   │  タスクごとに SFTP でファイル転送 → 実行 → 削除 という正規手順  │
+│   │    [→VPS]     Python モジュールを /tmp/.ansible/tmp/ に転送    │
+│   │    [実行@VPS] 転送したモジュールを実行                         │
+│   │    [削除@VPS] 実行後に /tmp/.ansible/tmp/XXXX/ を即削除        │
+│   └────────────────────────────────────────────────────────────────┘
+│
+│   ┌─ role: common ── パッケージ更新・基本設定 ──── [実行@VPS]
+│   │
+│   │   [apt ロック対策]
+│   │   ① unattended-upgrades / apt-daily / apt-daily-upgrade を停止
+│   │   ② dpkg/apt ロックファイルの解放を待機（最大 180 秒）
+│   │      ※ Ubuntu 24.04 起動直後の自動更新との競合防止
+│   │
+│   │   [STEP 1: パッケージ更新]
+│   │   ③ apt update（パッケージリスト更新）
+│   │   ④ apt upgrade + autoremove + autoclean
+│   │
+│   │   [STEP 2・8・11: 前提パッケージ導入]
+│   │   ⑤ apt install:
+│   │      ca-certificates / curl / gnupg / lsb-release
+│   │      software-properties-common / git / unattended-upgrades
+│   │
+│   │   [→VPS 配置] /etc/apt/apt.conf.d/20auto-upgrades
+│   │      APT::Periodic::Update-Package-Lists "1";  ← 毎日更新
+│   │      APT::Periodic::Unattended-Upgrade "1";    ← 毎日自動適用
+│   │      APT::Periodic::AutocleanInterval "7";     ← 7日キャッシュ削除
+│   │
+│   ├─ role: user ── ユーザー作成・公開鍵登録 ──────── [実行@VPS]
+│   │
+│   │   [STEP 3: ユーザー作成]
+│   │   ① ユーザー作成（bash シェル・sudo グループ追加）
+│   │   ② パスワード設定（SHA-512 ハッシュ化）
+│   │
+│   │   [STEP 4: 公開鍵登録]
+│   │   ③ /home/<user>/.ssh/ ディレクトリ作成（0700）
+│   │   [→VPS 配置] ~/.ssh/ssh_key_vps.pub の内容
+│   │      → /home/<user>/.ssh/authorized_keys（0600）
+│   │
+│   ├─ role: security ── UFW・SSH hardening ─────────── [実行@VPS]
+│   │
+│   │   [STEP 5: UFW 設定]
+│   │   ① UFW インストール
+│   │   ② デフォルト: 受信 deny / 送信 allow
+│   │   ③ 新 SSH ポートを許可（レートリミット付き・ブルートフォース対策）
+│   │   ④ 22番ポートを一時許可（★後続タスクの接続維持のため）
+│   │   ⑤ UFW 有効化
+│   │
+│   │   [STEP 6: SSH hardening]
+│   │   ⑥ /etc/ssh/sshd_config.d/ ディレクトリ作成
+│   │   ⑦ 既存 sshd_config の Port 行をコメントアウト（競合防止）
+│   │   [→VPS 配置] /etc/ssh/sshd_config.d/99-hardening.conf
+│   │      Port               <新ポート番号>
+│   │      PermitRootLogin    no
+│   │      PasswordAuthentication no
+│   │      PubkeyAuthentication   yes
+│   │   ⑧ sshd 構文チェック（sshd -t）→ エラーがあれば停止
+│   │   ⑨ SSH サービス再起動（新ポートで待受開始）
+│   │      ※ 22番ポートはここではまだ閉じない
+│   │        （後続タスクが port 22 で接続するため post_tasks まで維持）
+│   │
+│   ├─ role: docker ── install_docker=yes の場合のみ ── [実行@VPS]
+│   │
+│   │   [STEP 7: Docker CE インストール]
+│   │   ① /etc/apt/keyrings/ ディレクトリ作成
+│   │   ② アーキテクチャ検出（x86_64→amd64 / aarch64→arm64）
+│   │   ③ Docker 公式 GPG キーを取得
+│   │      → /etc/apt/keyrings/docker.asc に保存
+│   │   ④ Docker APT リポジトリを追加
+│   │      → /etc/apt/sources.list.d/docker.list
+│   │   ⑤ apt update（Docker リポジトリ追加後）
+│   │   ⑥ apt install:
+│   │      docker-ce / docker-ce-cli / containerd.io
+│   │      docker-buildx-plugin / docker-compose-plugin
+│   │   ⑦ Docker サービス起動・自動起動設定（systemd enable）
+│   │   ⑧ 一般ユーザーを docker グループに追加
+│   │
+│   ├─ role: workdir ── work_dir_name が空でない場合のみ ─ [実行@VPS]
+│   │
+│   │   [STEP 9: 作業ディレクトリ作成]
+│   │   ① /home/<user>/<work_dir>/ を作成
+│   │      オーナー: <user>:<user> / パーミッション: 0755
+│   │
+│   └─ post_tasks ── 全 role 完了後の後処理 ──────────── [実行@VPS]
+│
+│       [STEP 12: 最終パッケージ更新]
+│       ① apt update + upgrade + autoremove + autoclean
+│       ② SSH サービス再起動（最終更新後・カスタムポートを確実反映）
+│
+│       [STEP 13: 22番ポート閉鎖]
+│       ③ UFW: 22番ポートのルールを削除
+│          ★全タスク完了後のここで初めて閉じる（安全なタイミング）
+│
+│       [STEP 10: 一時公開鍵を削除]
+│       [削除@VPS] /root/.ssh/authorized_keys の一時鍵エントリ
+│          → 以降 root への SSH 鍵ログインは不可
+│
+│       [再起動]
+│       ④ VPS を再起動（非同期・Ansible からの切断を無視）
+│
+├─[PHASE 10]── SSH config 更新 ───────────────────────── [実行@Mac]
+│
+│   [生成/更新] ~/.ssh/config に追記
+│     Host myvps
+│       HostName     <IP アドレス>
+│       User         <ユーザー名>
+│       Port         <新 SSH ポート>
+│       IdentityFile ~/.ssh/ssh_key_vps
+│   ※ 同名 Host が既にある場合はバックアップして上書き
+│
+├─[PHASE 11]── 接続テスト ────────────────────────────── [実行@Mac]
+│
+│   最大 2 分間（5 秒ごと）リトライしながら新ポートで接続確認
+│     ✓ 成功 → 次フェーズへ
+│     ✗ タイムアウト → warn を表示して完了へ
+│
+├─[PHASE 12]── 設定確認スクリプト実行 ────────────────── [実行@Mac]
+│
+│   [→VPS] /tmp/vps_setup_XXXX/setup_confirmation.sh を転送（scp）
+│          → VPS の ~/setup_confirmation.sh
+│
+│   [実行@VPS:u] ~/setup_confirmation.sh（ssh -t でTTY付き実行）
+│     全 20 項目をチェック:
+│     OS / パッケージ更新状態 / ユーザー / パスワード / グループ
+│     公開鍵 / SSH ディレクトリ権限 / UFW / SSH ポート / SSH 設定
+│     SSH サービス / Docker / Docker Compose / Docker サービス
+│     Git / 作業ディレクトリ / 一時鍵削除確認 / 22番ポート
+│     セキュリティ自動更新 / インストール済みパッケージ（全13個）
+│
+│   [削除@VPS] ~/setup_confirmation.sh（実行後に即削除）
+│
+└─[PHASE 13]── クリーンアップ（trap EXIT・スクリプト終了時） ─ [実行@Mac]
+
+    [削除@Mac] /tmp/vps_setup_XXXX/ （全ファイル）
+               ansible.cfg / site.yml / roles/* / venv/ 等
+    [削除@Mac] /tmp/vps_ansible_vars_XXXX.yml
+               ※ base64 パスワードを含むため終了時に確実に削除
+
 【完了】
   ssh myvps  で接続可能
   （= ssh -i ~/.ssh/ssh_key_vps -p <新ポート> <ユーザー名>@<IP> と同じ）
@@ -317,67 +295,25 @@ bash <(curl -sSL https://raw.githubusercontent.com/ai-autoflow/scripts/main/vps_
 
 ---
 
-## ファイルライフサイクル（どこで作り・いつ送り・どこで実行するか）
+## shell 版スクリプトとの処理対応表
 
-### 手元 Mac 上で作成されるファイル
-
-| ファイル | 作成タイミング | 作成方法 | 備考 |
-|---------|--------------|---------|------|
-| `/tmp/vps_setup_XXXX/ansible.cfg` | PHASE 1 | curl でダウンロード | Ansible 設定 |
-| `/tmp/vps_setup_XXXX/requirements.yml` | PHASE 1 | curl でダウンロード | Galaxy コレクション定義 |
-| `/tmp/vps_setup_XXXX/site.yml` | PHASE 1 | curl でダウンロード | メイン Playbook |
-| `/tmp/vps_setup_XXXX/roles/*/tasks/main.yml` | PHASE 1 | curl でダウンロード（5ファイル） | 各 role の処理定義 |
-| `/tmp/vps_setup_XXXX/setup_confirmation.sh` | PHASE 1 | curl でダウンロード | VPS 設定確認スクリプト |
-| `/tmp/vps_setup_XXXX/venv/` | PHASE 2 | python3 -m venv | Ansible の Python 仮想環境 |
-| `/tmp/vps_setup_XXXX/inventory.ini` | PHASE 8 | スクリプト内で生成 | Ansible 接続先（IP・ポート・鍵パス） |
-| `/tmp/vps_ansible_vars_XXXX.yml` | PHASE 8 | スクリプト内で生成 | Ansible 変数（パスワードは base64） |
-| `~/.ssh/ssh_key_vps` | PHASE 5 | ssh-keygen | SSH 秘密鍵（セットアップ後も保持） |
-| `~/.ssh/ssh_key_vps.pub` | PHASE 5 | ssh-keygen | SSH 公開鍵（セットアップ後も保持） |
-| `~/.ssh/config` | PHASE 10 | スクリプト内で追記 | SSH 接続設定（セットアップ後も保持） |
-
-### VPS へ転送されるファイル（Mac → VPS）
-
-| 内容 | 転送タイミング | 転送方法 | VPS 上の転送先 |
-|------|--------------|---------|--------------|
-| SSH 公開鍵の内容 | PHASE 6 | SSH コマンド経由で echo | `/root/.ssh/authorized_keys` に追記 |
-| Ansible 各 role の Python モジュール | PHASE 9（タスク実行都度） | Ansible が SFTP で転送 → 実行 → 削除 | `/tmp/.ansible/tmp/XXXX/` （都度削除） |
-| `99-hardening.conf` の内容 | PHASE 9（role: security） | Ansible copy モジュール | `/etc/ssh/sshd_config.d/99-hardening.conf` |
-| `20auto-upgrades` の内容 | PHASE 9（role: common） | Ansible copy モジュール | `/etc/apt/apt.conf.d/20auto-upgrades` |
-| `setup_confirmation.sh` | PHASE 11 | scp | `~/setup_confirmation.sh` |
-
-> **pipelining = False の理由**
-> `pipelining = True` では Ansible が Python コードを SSH の **stdin にそのまま流し込む**。
-> Ubuntu 24.04 + OpenSSH 9.x はこのパターンを不正なパケットとみなして TCP RST を返す（`Connection reset by peer`）。
-> `pipelining = False` にすることで Ansible は **SFTP でファイルとして転送 → 実行 → 削除** という正規の手順を踏む。
-
-### VPS 上で実行されるもの
-
-| 実行ファイル | 実行タイミング | 実行場所 | 実行ユーザー |
-|-------------|--------------|---------|------------|
-| Ansible Python モジュール（タスク単位） | PHASE 9（各タスク） | VPS（/tmp/.ansible/tmp/） | root |
-| `99-hardening.conf` 配置・sshd 再起動 | PHASE 9（role: security） | VPS | root |
-| `setup_confirmation.sh` | PHASE 11 | VPS（~/） | 新ユーザー |
-
-### セットアップ後に削除されるファイル
-
-**VPS 上:**
-
-| ファイル | 削除タイミング | 削除理由 |
-|---------|--------------|---------|
-| `/tmp/.ansible/tmp/XXXX/` | 各タスク実行直後（Ansible が自動削除） | 一時ファイルを残さない |
-| `/root/.ssh/authorized_keys` の一時公開鍵エントリ | PHASE 9 post_tasks | root への SSH 鍵ログインを禁止 |
-| `~/setup_confirmation.sh` | PHASE 11 実行直後 | 確認スクリプトを残さない |
-
-**Mac 上:**
-
-| ファイル | 削除タイミング | 削除理由 |
-|---------|--------------|---------|
-| `/tmp/vps_setup_XXXX/`（全ファイル） | スクリプト終了時（trap EXIT） | 一時ファイルのクリーンアップ |
-| `/tmp/vps_ansible_vars_XXXX.yml` | スクリプト終了時（trap EXIT） | base64 パスワードを含むため即削除 |
+| shell 版 STEP | 内容 | Ansible での実装場所 |
+|--------------|------|---------------------|
+| STEP 1 | apt update / upgrade | role: common |
+| STEP 2 | 前提パッケージ導入 | role: common |
+| STEP 3 | ユーザー作成・パスワード設定 | role: user |
+| STEP 4 | 公開鍵を authorized_keys に登録 | role: user |
+| STEP 5 | UFW 設定 | role: security |
+| STEP 6 | SSH hardening | role: security |
+| STEP 7 | Docker CE インストール | role: docker |
+| STEP 8 | git インストール | role: common（前提パッケージに含む） |
+| STEP 9 | 作業ディレクトリ作成 | role: workdir |
+| STEP 10 | root の一時公開鍵を削除 | site.yml post_tasks |
+| STEP 11 | セキュリティ自動更新有効化 | role: common |
+| STEP 12 | 最終パッケージ更新・SSH再起動 | site.yml post_tasks |
+| STEP 13 | 22番ポートを閉鎖 | site.yml post_tasks |
 
 ---
-
-
 
 ## ファイル構成
 
@@ -386,6 +322,7 @@ ansible/
 ├── bootstrap.sh          # エントリーポイント（購入者が実行する唯一のファイル）
 ├── ansible.cfg           # Ansible 設定（pipelining 無効・ControlMaster 無効）
 ├── requirements.yml      # Galaxy コレクション定義
+├── setup_confirmation.sh # VPS 設定確認スクリプト（セットアップ後に VPS 上で実行）
 ├── site.yml              # メイン Playbook
 └── roles/
     ├── common/
@@ -430,7 +367,7 @@ ssh myvps
 
 - **Ansible の自動インストール**: `python3 -m venv` で一時 venv を作成し `pip install ansible`。Homebrew 不要で全 Mac で動作する
 - **パスワード認証は 1 回だけ**: ControlMaster で SSH 多重化し、公開鍵登録後は鍵認証のみ
-- **pipelining = False**: Ubuntu 24.04 + OpenSSH 9.x では pipelining が `Connection reset by peer` を引き起こすため無効化
+- **pipelining = False**: `pipelining = True` では Ansible が Python コードを SSH の stdin にそのまま流し込む。Ubuntu 24.04 + OpenSSH 9.x はこれを不正なパケットとみなして TCP RST を返す（`Connection reset by peer`）。`False` にすることで SFTP でファイルとして転送 → 実行 → 削除 という正規手順を踏む
 - **22番ポートの閉鎖タイミング**: `ControlMaster=no` では Ansible はタスクごとに新規 SSH 接続を開くため、security role 内で閉じると docker/workdir タスクが接続不能になる。全 role 完了後の post_tasks で閉じることで安全に処理する
 - **apt ロック待機**: Ubuntu 24.04 は起動直後に unattended-upgrades が自動実行されるため、common role の最初で自動更新サービスを停止し dpkg ロックの解放を最大 180 秒待機する
 - **GITHUB_RAW_URL の変更**: bootstrap.sh 29行目の変数を自分のリポジトリに変更すること
