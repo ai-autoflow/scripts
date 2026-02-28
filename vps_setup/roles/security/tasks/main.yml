@@ -33,7 +33,7 @@
     rule: allow
     port: "22"
     proto: tcp
-    comment: "SSH default (temporary)"
+    comment: "SSH default port (temporary)"
 
 - name: UFW を有効化
   community.general.ufw:
@@ -70,7 +70,7 @@
   ansible.builtin.copy:
     dest: /etc/ssh/sshd_config.d/99-hardening.conf
     content: |
-      # Managed by vps_setup ansible v1.0.0
+      # Managed by vps_setup ansible v1.1.0
       Port {{ ssh_port }}
       PermitRootLogin no
       PasswordAuthentication no

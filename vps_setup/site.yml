@@ -9,11 +9,11 @@
   become: yes
 
   roles:
-    - common     # STEP1〜2・11: パッケージ更新・基本パッケージ・自動更新
-    - user       # STEP3〜4:    ユーザー作成・公開鍵登録
-    - security   # STEP5〜6:    UFW・SSH hardening
-    - docker     # STEP7:       Docker CE（install_docker: yes の場合のみ）
-    - workdir    # STEP9:       作業ディレクトリ（work_dir_name が空でない場合のみ）
+    - common     # STEP1〜2・8・11: パッケージ更新・基本パッケージ・Git・自動更新
+    - user       # STEP3〜4:        ユーザー作成・公開鍵登録
+    - security   # STEP5〜6:        UFW・SSH hardening
+    - docker     # STEP7:           Docker CE（install_docker: yes の場合のみ）
+    - workdir    # STEP9:           作業ディレクトリ（work_dir_name が空でない場合のみ）
 
   post_tasks:
 
@@ -21,12 +21,22 @@
     # setup2.sh STEP12 相当。Docker 等の全インストール完了後に実施。
     # apt upgrade 後に sshd が再起動されカスタムポート設定が失われる
     # 可能性があるため、最後に SSH を明示的に再起動する。
-    - name: 最終パッケージ更新（全ロール完了後）
+    #
+    # setup2.sh は「まだ更新対象が残っていれば最大3回リトライ」する。
+    # Ansible でも同様に until: not changed で全パッケージが最新になるまで繰り返す。
+    - name: 最終 apt キャッシュ更新
       ansible.builtin.apt:
         update_cache: yes
+
+    - name: 最終パッケージ更新（全パッケージが最新になるまで最大3回）
+      ansible.builtin.apt:
         upgrade: yes
         autoremove: yes
         autoclean: yes
+      register: _apt_final
+      until: not _apt_final.changed
+      retries: 3
+      delay: 5
 
     - name: SSH サービス再起動（最終更新後・カスタムポート設定を確実に反映）
       ansible.builtin.service:
@@ -46,6 +56,9 @@
 
     # ── STEP 10: 一時公開鍵を削除 ────────────────────────────────────
     # setup2.sh STEP10 相当。root の authorized_keys から一時登録した公開鍵を削除。
+    # ※ setup2.sh では STEP10 は最終更新（STEP12）前に実行されるが、
+    #   Ansible では root の SSH 鍵がないとこの時点まで接続できないため
+    #   意図的に最後（22番ポート閉鎖の後）に移動している。
     # ※ このタスク実行後は root への SSH 鍵ログインが不可になる
     - name: root の authorized_keys から一時公開鍵を削除
       ansible.posix.authorized_key:
