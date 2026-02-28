@@ -582,6 +582,36 @@ fi
 info "SSH 鍵認証 OK ✓"
 echo ""
 
+#── Ansible 実行前の事前処理：apt 自動更新を停止してメモリを解放 ──
+# apt-daily-upgrade が実行中の場合、最大 ~1.4GB のメモリを消費する。
+# Ansible 起動後にこれを止めようとしても、Gathering Facts の直後に
+# メモリ不足で SFTP/SCP/piped 転送が失敗することがある（512MB VPS で顕著）。
+# plain SSH exec（SFTP 不要）で先に停止してメモリを確保してから Ansible を起動する。
+info "apt 自動更新サービスを事前停止中（メモリ確保）..."
+ssh \
+  -i "$LOCAL_PRIVKEY" \
+  -o BatchMode=yes \
+  -o ConnectTimeout=30 \
+  -o StrictHostKeyChecking=accept-new \
+  -o IdentitiesOnly=yes \
+  -o PasswordAuthentication=no \
+  -o ControlMaster=no \
+  -p "$VPS_SSH_PORT_BEFORE" \
+  "${VPS_ROOT_USER}@${VPS_HOST}" \
+  'systemctl stop unattended-upgrades apt-daily apt-daily-upgrade 2>/dev/null || true
+   i=0
+   while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || \
+         fuser /var/lib/dpkg/lock          >/dev/null 2>&1 || \
+         fuser /var/lib/apt/lists/lock     >/dev/null 2>&1; do
+     [ $i -ge 36 ] && echo "apt ロック待機タイムアウト（180秒）" && exit 0
+     echo "apt ロック待機中... $((i*5))秒"
+     sleep 5
+     i=$((i+1))
+   done
+   echo "apt 停止・ロック解放済み"' || true
+info "apt 事前停止完了 ✓"
+echo ""
+
 #── inventory.ini 生成 ────────────────────────────────
 INVENTORY_FILE="${WORK_DIR}/inventory.ini"
 cat > "$INVENTORY_FILE" <<EOF

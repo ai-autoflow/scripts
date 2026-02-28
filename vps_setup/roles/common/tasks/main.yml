@@ -4,8 +4,9 @@
 # setup2.sh STEP1〜2・11 相当
 #========================================================
 
-# ── apt ロック対策（Ubuntu 24.04 起動直後の競合防止） ────────────
-# Ubuntu 24.04 はOS起動直後に unattended-upgrades が自動実行される。
+# ── apt ロック対策（Ubuntu 24.04 定期タイマーとの競合防止） ─────
+# Ubuntu 24.04 は systemd タイマーにより apt-daily / apt-daily-upgrade が
+# 毎日ランダムな時間帯に自動実行される（起動直後に限らない）。
 # このプロセスが dpkg ロックを取得したまま動いていると
 # apt-get が "Could not get lock" で失敗する。
 # setup2.sh の wait_for_apt_lock() と同等の処理。
@@ -13,9 +14,10 @@
 # ★ raw モジュールを使う理由:
 #   ansible.builtin.systemd（loop）や shell を使うと
 #   タスクごとに SFTP/SCP で Python モジュールを転送する必要がある。
-#   unattended-upgrades の停止直後は dpkg ロック解放の競合で
-#   システムが一瞬不安定になり SFTP/SCP が両方失敗して UNREACHABLE になる。
-#   raw モジュールは Python 転送不要・SSH で直接実行するため競合を回避できる。
+#   apt-daily-upgrade 実行中はメモリを大量消費（～1.4GB）しており
+#   SFTP/SCP サブシステムの起動に必要なメモリが枯渇して両方失敗し
+#   UNREACHABLE になる。
+#   raw モジュールは Python 転送不要・SSH で直接実行するため回避できる。
 
 - name: apt 自動更新サービスを停止してロック解放を待機
   ansible.builtin.raw: |
