@@ -88,6 +88,7 @@ download_files() {
     "roles/security/tasks/main.yml"
     "roles/docker/tasks/main.yml"
     "roles/workdir/tasks/main.yml"
+    "setup_confirmation.sh"
   )
 
   for file in "${files[@]}"; do
@@ -285,7 +286,7 @@ establish_control_master() {
   ssh -p "$VPS_SSH_PORT_BEFORE" \
     -o ControlMaster=yes \
     -o "ControlPath=$CTRL_SOCKET" \
-    -o ControlPersist=120 \
+    -o ControlPersist=600 \
     -o StrictHostKeyChecking=accept-new \
     -o PubkeyAuthentication=no \
     -o PasswordAuthentication=yes \
@@ -364,6 +365,48 @@ test_new_connection() {
   else
     warn "自動テストで接続を確認できませんでした。手動で確認してください:"
     warn "  ssh ${SSH_CONFIG_HOST}"
+  fi
+}
+
+#========================================================
+# 設定確認スクリプト実行（セットアップ後の全設定を VPS 上でチェック）
+#========================================================
+run_confirmation_script() {
+  local confirm_script="${WORK_DIR}/setup_confirmation.sh"
+
+  if [[ ! -f "$confirm_script" ]]; then
+    warn "setup_confirmation.sh が見つかりません。確認スクリプトをスキップします。"
+    return
+  fi
+
+  info "設定確認スクリプトを VPS で実行します..."
+
+  # VPS への転送（リトライ付き：接続テスト直後なので基本1回で成功する）
+  local confirm_ok="no"
+  for i in $(seq 1 "$TEST_RETRIES"); do
+    if scp -o StrictHostKeyChecking=accept-new \
+           "$confirm_script" \
+           "${SSH_CONFIG_HOST}:~/setup_confirmation.sh" 2>/dev/null; then
+      confirm_ok="yes"
+      break
+    fi
+    warn "(${i}/${TEST_RETRIES}) 確認スクリプトの転送に失敗。${TEST_SLEEP}s 後に再試行..."
+    sleep "$TEST_SLEEP"
+  done
+
+  if [[ "$confirm_ok" == "yes" ]]; then
+    ssh -t -o StrictHostKeyChecking=accept-new \
+        "$SSH_CONFIG_HOST" \
+        "chmod +x ~/setup_confirmation.sh && ~/setup_confirmation.sh"
+    ssh -o StrictHostKeyChecking=accept-new \
+        "$SSH_CONFIG_HOST" \
+        "rm -f ~/setup_confirmation.sh" 2>/dev/null || true
+    info "VPS 上の確認スクリプトを削除しました"
+  else
+    warn "確認スクリプトの転送に失敗しました。手動で確認してください:"
+    warn "  scp setup_confirmation.sh ${SSH_CONFIG_HOST}:~/"
+    warn "  ssh ${SSH_CONFIG_HOST}"
+    warn "  chmod +x ~/setup_confirmation.sh && ~/setup_confirmation.sh"
   fi
 }
 
@@ -493,6 +536,7 @@ info "SSH 鍵を生成しました: ${LOCAL_PRIVKEY}"
 echo ""
 
 #── known_hosts クリア ────────────────────────────────
+info "known_hosts から古いホストキーを削除中（存在する場合）..."
 ssh-keygen -R "$VPS_HOST" 2>/dev/null || true
 ssh-keygen -R "[${VPS_HOST}]:${NEW_SSH_PORT}" 2>/dev/null || true
 
@@ -580,6 +624,10 @@ echo ""
 
 #── 接続テスト ────────────────────────────────────────
 test_new_connection
+echo ""
+
+#── 設定確認スクリプト ────────────────────────────────
+run_confirmation_script
 echo ""
 
 #── 完了メッセージ ────────────────────────────────────

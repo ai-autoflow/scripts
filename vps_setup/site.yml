@@ -2,26 +2,58 @@
 #========================================================
 # site.yml - メイン playbook
 # Ubuntu 24.04 LTS VPS 初期セットアップ
+# setup2.sh v1.8.0 と同等の処理を Ansible で実装
 #========================================================
 - name: Ubuntu 24.04 VPS 初期セットアップ
   hosts: vps
   become: yes
 
   roles:
-    - common     # パッケージ更新・基本パッケージ
-    - user       # ユーザー作成・公開鍵登録
-    - security   # SSH設定・UFW・自動更新
-    - docker     # Docker CE（install_docker: yes の場合のみ）
-    - workdir    # 作業ディレクトリ（work_dir_name が空でない場合のみ）
+    - common     # STEP1〜2・11: パッケージ更新・基本パッケージ・自動更新
+    - user       # STEP3〜4:    ユーザー作成・公開鍵登録
+    - security   # STEP5〜6:    UFW・SSH hardening
+    - docker     # STEP7:       Docker CE（install_docker: yes の場合のみ）
+    - workdir    # STEP9:       作業ディレクトリ（work_dir_name が空でない場合のみ）
 
   post_tasks:
+
+    # ── STEP 12: 最終パッケージ更新 ──────────────────────────────────
+    # setup2.sh STEP12 相当。Docker 等の全インストール完了後に実施。
+    # apt upgrade 後に sshd が再起動されカスタムポート設定が失われる
+    # 可能性があるため、最後に SSH を明示的に再起動する。
+    - name: 最終パッケージ更新（全ロール完了後）
+      ansible.builtin.apt:
+        update_cache: yes
+        upgrade: yes
+        autoremove: yes
+        autoclean: yes
+
+    - name: SSH サービス再起動（最終更新後・カスタムポート設定を確実に反映）
+      ansible.builtin.service:
+        name: "{{ 'ssh' if ansible_service_mgr == 'systemd' else 'sshd' }}"
+        state: restarted
+
+    # ── STEP 13: 22番ポート閉鎖 ──────────────────────────────────────
+    # ControlMaster=no では Ansible はタスクごとに新規 SSH 接続（port 22）を使う。
+    # security role 内で閉じると docker/workdir/post_tasks が接続できなくなるため
+    # 全 role + 最終更新が完了してからここで閉じる。
+    - name: UFW 22番ポートを閉じる（全タスク完了・再起動直前）
+      community.general.ufw:
+        rule: allow
+        port: "22"
+        proto: tcp
+        delete: yes
+
+    # ── STEP 10: 一時公開鍵を削除 ────────────────────────────────────
+    # setup2.sh STEP10 相当。root の authorized_keys から一時登録した公開鍵を削除。
+    # ※ このタスク実行後は root への SSH 鍵ログインが不可になる
     - name: root の authorized_keys から一時公開鍵を削除
       ansible.posix.authorized_key:
         user: root
         key: "{{ lookup('file', local_pub_key_path) }}"
         state: absent
-      # ※ このタスク実行後は root の鍵認証が無効になる（最終タスク）
 
+    # ── 再起動 ────────────────────────────────────────────────────────
     - name: 再起動（非同期実行・切断を無視）
       ansible.builtin.shell: "sleep 2 && reboot"
       async: 1
